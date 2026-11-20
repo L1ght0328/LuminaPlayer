@@ -290,7 +290,7 @@ public partial class MainWindow : Window
         string? root=Microsoft.VisualBasic.Interaction.InputBox("Pastas vinculadas:\n"+string.Join("\n",config.Roots)+"\n\nDigite o caminho exato para remover:","Gerenciar pastas");
         if(!string.IsNullOrWhiteSpace(root)&&config.Roots.Remove(root)){ConfigStore.Save(config);RefreshAll();}
     }
-    private void MainWindow_KeyDown(object sender,KeyEventArgs e)
+    private void MainWindow_KeyDown(object sender,System.Windows.Input.KeyEventArgs e)
     {
         if(e.Key==Key.Space){PlayPause_Click(this,new RoutedEventArgs());e.Handled=true;}
         if(e.KeyboardDevice.Modifiers==ModifierKeys.Control&&e.Key==Key.Right){AdvanceManual();e.Handled=true;}
