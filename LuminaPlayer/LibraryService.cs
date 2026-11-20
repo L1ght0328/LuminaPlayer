@@ -125,7 +125,7 @@ public sealed class LibraryService(AppConfig config)
                 {
                     try
                     {
-                        var attributes = Directory.GetAttributes(directory);
+                        var attributes = File.GetAttributes(directory);
                         if ((attributes & FileAttributes.ReparsePoint) == 0) pending.Push(directory);
                     }
                     catch (UnauthorizedAccessException) { }
