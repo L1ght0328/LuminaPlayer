@@ -10,6 +10,7 @@ public sealed class EqualizerSampleProvider : ISampleProvider
     private readonly Biquad[][] filters;
     private readonly double[] centers = { 31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
     private readonly object gate = new();
+    private readonly bool[] activeBands = new bool[10];
 
     public EqualizerSampleProvider(ISampleProvider source)
     {
@@ -28,8 +29,11 @@ public sealed class EqualizerSampleProvider : ISampleProvider
     public void SetBand(int index, double gainDb)
     {
         lock (gate)
+        {
+            activeBands[index] = Math.Abs(gainDb) > 0.01;
             for (int ch = 0; ch < filters.Length; ch++)
                 filters[ch][index].Configure(WaveFormat.SampleRate, centers[index], 1.0, gainDb);
+        }
     }
 
     public int Read(float[] buffer, int offset, int count)
@@ -37,13 +41,14 @@ public sealed class EqualizerSampleProvider : ISampleProvider
         int read = source.Read(buffer, offset, count);
         lock (gate)
         {
+            if (!activeBands.Any(active => active)) return read;
             int channels = WaveFormat.Channels;
             for (int n = 0; n < read; n++)
             {
                 int ch = n % channels;
                 float sample = buffer[offset + n];
                 for (int band = 0; band < centers.Length; band++)
-                    sample = filters[ch][band].Process(sample);
+                    if (activeBands[band]) sample = filters[ch][band].Process(sample);
                 buffer[offset + n] = Math.Clamp(sample, -1f, 1f);
             }
         }

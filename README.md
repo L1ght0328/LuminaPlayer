@@ -1,75 +1,52 @@
-# Lumina Player — Windows 10 x64
+# Lumina Player — Windows 10/11 x64
 
-Player desktop nativo para Windows 10 (64-bit), sem navegador e sem serviço online. O projeto usa WPF/.NET 8 e NAudio. A interface e a reprodução rodam no processo desktop; não há console no executável publicado.
+Reprodutor de música local, offline e leve, construído em C#/.NET 8 com WPF e NAudio.
 
-## Stack escolhida
+## Prioridades de projeto
 
-- **C# + .NET 8 + WPF**: GUI Windows nativa, integração com janelas de seleção, barra de tarefas, atalhos e baixo overhead comparado a Electron.
-- **NAudio**: saída de áudio WASAPI/Windows, leitura dos formatos suportados pelo NAudio/Media Foundation.
-- **DSP próprio (biquads peaking)**: equalização de 10 bandas em tempo real, sem depender de um equalizador externo.
-- **JSON em `%AppData%`**: biblioteca, categorias, playlists e preferências.
+- Sem streaming, anúncios, telemetria, serviços em segundo plano ou conexão obrigatória com a internet.
+- Interface WPF nativa, sem animações contínuas nem capas baixadas da internet.
+- Atualização do relógio do player a cada 500 ms.
+- Biblioteca indexada em memória durante a sessão para evitar revarrer o disco a cada tecla digitada na busca.
+- Configurações pequenas em JSON dentro de `%AppData%\LuminaPlayer`.
+- Publicação self-contained x64: o usuário final não precisa instalar o .NET separadamente.
+
+## Recursos
+
+- Adicionar pastas locais e pesquisar músicas.
+- Reprodução, pausa, anterior, próxima, seek, volume e mudo.
+- Repetição de faixa e de fila.
+- Playlists e categorias locais.
+- Equalizador de 10 bandas com presets Flat, Bass Boost, Rock e Pop, além de presets personalizados.
+- Tema claro/escuro e acento configurável no arquivo de configuração.
+- Atalhos: Espaço para play/pause; Ctrl+Seta esquerda/direita para faixa anterior/próxima.
 
 ## Formatos de áudio
 
-O player tenta abrir cada arquivo usando `AudioFileReader` e, se necessário, `MediaFoundationReader`. MP3, WAV, AIFF e formatos reconhecidos pelos codecs do Windows são suportados. FLAC/OGG dependem de codecs Media Foundation instalados no Windows; a lista de extensões é extensível em `LibraryService.cs`. Não incluí um pacote de codecs de terceiros para manter o instalador pequeno e evitar redistribuição/licenciamento de codecs.
+A reprodução usa NAudio e os decodificadores disponíveis no Windows Media Foundation. MP3 e WAV são os formatos de referência. M4A/AAC, WMA, AIFF e FLAC dependem dos codecs presentes na versão do Windows. OGG/Opus podem não estar disponíveis em instalações padrão do Windows; não são prometidos como compatíveis nesta compilação.
 
-## Requisitos para COMPILAR
+## Gerar o instalador no GitHub Actions
 
-- Windows 10 64-bit atualizado.
-- Visual Studio 2022 (workload **Desenvolvimento para desktop com .NET**) ou .NET 8 SDK.
-- Internet apenas na máquina de desenvolvimento para baixar o pacote NuGet NAudio. O aplicativo final funciona offline.
+1. Envie o conteúdo desta pasta para um repositório GitHub.
+2. Confirme que `.github/workflows/build-windows.yml` está presente.
+3. Abra a aba **Actions**.
+4. Selecione **Build Windows installer** e use **Run workflow** na branch `main`.
+5. Ao terminar com ✓ verde, abra a execução e baixe o artifact `LuminaPlayer-Setup-win-x64`.
+6. Extraia o ZIP do artifact. Dentro dele estará `LuminaPlayer-Setup-win-x64.exe`.
 
-## Abrir e compilar no Visual Studio
+## Gerar localmente em Windows
 
-1. Extraia o ZIP.
-2. Abra `LuminaPlayer.sln` no Visual Studio 2022.
-3. Aguarde a restauração dos pacotes NuGet.
-4. Selecione `Release` e `x64`.
-5. Menu **Compilar > Publicar LuminaPlayer** ou use o comando abaixo.
+Requisitos para quem compila: .NET 8 SDK e Inno Setup 6.
 
-## Gerar EXE independente (sem console)
-
-Abra o **Developer PowerShell for Visual Studio** ou PowerShell na pasta que contém `LuminaPlayer.csproj` e execute:
+Abra PowerShell na pasta do projeto e execute:
 
 ```powershell
-dotnet restore
-dotnet publish .\LuminaPlayer.csproj -c Release -r win-x64 --self-contained true `
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
-  -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false `
-  -o ..\publish
+./publish.ps1
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer/LuminaPlayer.iss
 ```
 
-O projeto define `OutputType=WinExe`, então não abre janela de terminal. O executável estará em `publish\LuminaPlayer.exe`. Copie a pasta `publish` para o PC destino (ou distribua o EXE se o publish single-file tiver incluído todas as dependências).
+O instalador será criado em `dist/LuminaPlayer-Setup-win-x64.exe`.
 
-**Nota:** publicação self-contained inclui o runtime .NET e tende a produzir um arquivo maior, mas não exige instalar .NET no PC do usuário. Para reduzir tamanho, remova `--self-contained true` e publique framework-dependent, mas o PC destino precisará do .NET Desktop Runtime 8.
+## Observação de validação
 
-
-## Gerar instalador `.exe` automaticamente (recomendado)
-
-O repositório inclui `publish.ps1`, `installer/LuminaPlayer.iss` e um workflow do GitHub Actions em `.github/workflows/build-windows.yml`. Como WPF só pode ser compilado em Windows, o workflow usa um runner Windows para publicar o app self-contained x64 e empacotá-lo em um instalador Inno Setup.
-
-1. Envie esta pasta para um repositório GitHub.
-2. Abra a aba **Actions** e habilite workflows, se o GitHub solicitar.
-3. Execute **Build Windows installer** em **Run workflow**.
-4. Quando terminar, abra a execução e baixe o artefato `LuminaPlayer-Setup-win-x64`. Ele contém `LuminaPlayer-Setup-win-x64.exe`.
-5. Para criar também uma Release pública, crie e envie uma tag começando com `v`, por exemplo `v1.0.0`; o workflow anexará o instalador à Release.
-
-O instalador cria atalhos no Menu Iniciar e, opcionalmente, na área de trabalho. O aplicativo publicado inclui o runtime .NET, então o computador de destino não precisa instalar o .NET separadamente.
-
-## Uso
-
-- **Adicionar pasta**: escolhe uma pasta no seletor nativo do Windows; a varredura é recursiva.
-- **Duplo clique em faixa**: toca e cria a fila a partir da lista atual.
-- **Categorias e playlists**: crie categoria, renomeie categoria, crie playlist e adicione seleção.
-- **Playlists**: duplo clique na playlist carrega sua fila.
-- **Loop**: alterna Desligado → Uma faixa → Playlist.
-- **Equalizador**: 10 bandas, -12 a +12 dB; presets e presets personalizados salvos localmente.
-- **Preferências**: tema, cor de destaque, layout compacto e visibilidade de seções.
-- **Atalhos**: Espaço, Ctrl+Seta direita e Ctrl+Seta esquerda.
-
-## Observações técnicas
-
-- Pastas de playlists são categorias virtuais dentro do Lumina; arquivos originais não são movidos.
-- A varredura inicial é síncrona para manter o projeto enxuto. Bibliotecas muito grandes podem levar alguns segundos; para milhares de arquivos, o próximo passo é mover o scanner para `Task.Run` com progresso/cancelamento.
-- O player usa uma cadeia de DSP em ponto flutuante. O equalizador é aplicado em tempo real ao áudio reproduzido.
-- A saída de áudio é encerrada ao fechar a janela.
+O código deve ser compilado e testado em Windows x64 antes de distribuir a terceiros. Este pacote contém o projeto e o pipeline de build; não contém um binário `.exe` pré-compilado.

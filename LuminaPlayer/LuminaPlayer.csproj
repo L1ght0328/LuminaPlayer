@@ -3,10 +3,10 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishTrimmed>false</PublishTrimmed>
     <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>LuminaPlayer</AssemblyName>
     <ApplicationIcon>lumina.ico</ApplicationIcon>
