@@ -151,7 +151,14 @@ public partial class MainWindow : Window
             t.FileName.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         if (currentView == "Folders" && !string.IsNullOrWhiteSpace(selectedRoot))
-            filtered = filtered.Where(t => t.System.IO.Path.StartsWith(selectedRoot, StringComparison.OrdinalIgnoreCase));
+            string normalizedRoot = System.IO.Path.GetFullPath(selectedRoot).TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+            filtered = filtered.Where(t =>
+            {
+                string fullPath = System.IO.Path.GetFullPath(t.Path);
+                return fullPath.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase) ||
+                       fullPath.StartsWith(normalizedRoot + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                       fullPath.StartsWith(normalizedRoot + System.IO.Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            });
         else if (currentView == "Albums") filtered = filtered.GroupBy(t => t.Artist + "|" + t.Album).Select(g => g.First());
         else if (currentView == "Artists") filtered = filtered.GroupBy(t => t.Artist).Select(g => g.First());
         else if (currentView == "Genres") filtered = filtered.GroupBy(t => t.Genre).Select(g => g.First());
@@ -499,7 +506,7 @@ public partial class MainWindow : Window
         }
         float level = audio.IsPlaying ? audio.Level : 0f;
         int barIndex = 0;
-        foreach (var bar in VisualizerBars.Children.OfType<Rectangle>())
+        foreach (var bar in VisualizerBars.Children.OfType<System.Windows.Shapes.Rectangle>())
         {
             double modulation = 0.28 + 0.72 * Math.Abs(Math.Sin((barIndex + 1) * 0.83));
             bar.Height = Math.Max(3, 3 + level * 27 * modulation);
