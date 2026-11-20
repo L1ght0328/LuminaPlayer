@@ -151,7 +151,10 @@ public partial class MainWindow : Window
             t.FileName.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         if (currentView == "Folders" && !string.IsNullOrWhiteSpace(selectedRoot))
-            string normalizedRoot = System.IO.Path.GetFullPath(selectedRoot).TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+        {
+            string normalizedRoot = System.IO.Path.GetFullPath(selectedRoot).TrimEnd(
+                System.IO.Path.DirectorySeparatorChar,
+                System.IO.Path.AltDirectorySeparatorChar);
             filtered = filtered.Where(t =>
             {
                 string fullPath = System.IO.Path.GetFullPath(t.Path);
@@ -159,6 +162,7 @@ public partial class MainWindow : Window
                        fullPath.StartsWith(normalizedRoot + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
                        fullPath.StartsWith(normalizedRoot + System.IO.Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
             });
+        }
         else if (currentView == "Albums") filtered = filtered.GroupBy(t => t.Artist + "|" + t.Album).Select(g => g.First());
         else if (currentView == "Artists") filtered = filtered.GroupBy(t => t.Artist).Select(g => g.First());
         else if (currentView == "Genres") filtered = filtered.GroupBy(t => t.Genre).Select(g => g.First());
