@@ -1,0 +1,19 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LuminaPlayer", "LuminaPlayer\LuminaPlayer.csproj", "{2F46AB7C-67E2-4E1D-91CB-7D7E7F5A0A11}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2F46AB7C-67E2-4E1D-91CB-7D7E7F5A0A11}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2F46AB7C-67E2-4E1D-91CB-7D7E7F5A0A11}.Debug|x64.Build.0 = Debug|Any CPU
+		{2F46AB7C-67E2-4E1D-91CB-7D7E7F5A0A11}.Release|x64.ActiveCfg = Release|Any CPU
+		{2F46AB7C-67E2-4E1D-91CB-7D7E7F5A0A11}.Release|x64.Build.0 = Release|Any CPU
+		{2F46AB7C-67E2-4E1D-91CB-7D7E7F5A0A11}.Release|x64.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
