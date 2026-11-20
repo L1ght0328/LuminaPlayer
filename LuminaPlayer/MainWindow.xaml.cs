@@ -6,7 +6,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 using System.Windows.Threading;
 using Brushes = System.Windows.Media.Brushes;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
@@ -48,7 +47,7 @@ public partial class MainWindow : Window
         BuildEq();
         ApplyPreferences();
         RootsList.ItemsSource = config.Roots.ToList();
-        FolderTiles.ItemsSource = config.Roots.Select(root => new FolderTileEntry(Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar)), root, "Carregando…")).ToList();
+        FolderTiles.ItemsSource = config.Roots.Select(root => new FolderTileEntry(System.IO.Path.GetFileName(root.TrimEnd(System.IO.Path.DirectorySeparatorChar)), root, "Pasta local")).ToList();
         RefreshCollections();
         StatusText.Text = config.Roots.Count == 0 ? "Adicione uma pasta para começar" : "Preparando sua biblioteca local…";
         Loaded += async (_, _) => await LoadInitialLibraryAsync();
@@ -124,7 +123,7 @@ public partial class MainWindow : Window
     {
         RootsList.ItemsSource = null;
         RootsList.ItemsSource = config.Roots.ToList();
-        FolderTiles.ItemsSource = config.Roots.Select(root => new FolderTileEntry(Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar)), root, $"{library.CountForRoot(root):N0} itens")).ToList();
+        FolderTiles.ItemsSource = config.Roots.Select(root => new FolderTileEntry(System.IO.Path.GetFileName(root.TrimEnd(System.IO.Path.DirectorySeparatorChar)), root, $"{library.CountForRoot(root):N0} itens")).ToList();
         RefreshCollections();
         RefreshTracks();
     }
@@ -152,22 +151,10 @@ public partial class MainWindow : Window
             t.FileName.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         if (currentView == "Folders" && !string.IsNullOrWhiteSpace(selectedRoot))
-            filtered = filtered.Where(t => t.Path.StartsWith(selectedRoot, StringComparison.OrdinalIgnoreCase));
-        else if (currentView == "Albums") filtered = filtered.GroupBy(t => t.Artist + "|" + t.Album).Select(g =>
-        {
-            var first = g.First();
-            return new TrackEntry { Title = first.Album, Artist = first.Artist, Album = first.Album, Genre = first.Genre, Path = first.Path, FileName = first.FileName, CoverPath = first.CoverPath, CoverBrush = first.CoverBrush };
-        });
-        else if (currentView == "Artists") filtered = filtered.GroupBy(t => t.Artist).Select(g =>
-        {
-            var first = g.First();
-            return new TrackEntry { Title = first.Artist, Artist = first.Artist, Album = $"{g.Count()} faixas", Genre = first.Genre, Path = first.Path, FileName = first.FileName, CoverPath = first.CoverPath, CoverBrush = first.CoverBrush };
-        });
-        else if (currentView == "Genres") filtered = filtered.GroupBy(t => t.Genre).Select(g =>
-        {
-            var first = g.First();
-            return new TrackEntry { Title = first.Genre, Artist = $"{g.Count()} faixas", Album = "Gênero musical", Genre = first.Genre, Path = first.Path, FileName = first.FileName, CoverPath = first.CoverPath, CoverBrush = first.CoverBrush };
-        });
+            filtered = filtered.Where(t => t.System.IO.Path.StartsWith(selectedRoot, StringComparison.OrdinalIgnoreCase));
+        else if (currentView == "Albums") filtered = filtered.GroupBy(t => t.Artist + "|" + t.Album).Select(g => g.First());
+        else if (currentView == "Artists") filtered = filtered.GroupBy(t => t.Artist).Select(g => g.First());
+        else if (currentView == "Genres") filtered = filtered.GroupBy(t => t.Genre).Select(g => g.First());
 
         visibleTracks = filtered.OrderBy(t => t.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
         int pageCount = Math.Max(1, (int)Math.Ceiling(visibleTracks.Count / (double)PageSize));
@@ -260,7 +247,7 @@ public partial class MainWindow : Window
         currentView = "Folders";
         currentPage = 0;
         RefreshTracks();
-        StatusText.Text = $"Pasta selecionada: {Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar))}";
+        StatusText.Text = $"Pasta selecionada: {System.IO.Path.GetFileName(root.TrimEnd(System.IO.Path.DirectorySeparatorChar))}";
     }
 
     private async void FolderTile_Click(object sender, RoutedEventArgs e)
@@ -382,7 +369,7 @@ public partial class MainWindow : Window
             for (int i = 0; i < eqSliders.Length; i++) audio.SetBand(i, eqSliders[i].Value);
             audio.SetVolume(config.Volume, muted);
             currentTrack = library.AllEntries().FirstOrDefault(t => string.Equals(t.Path, queue[queueIndex], StringComparison.OrdinalIgnoreCase));
-            NowPlaying.Text = currentTrack?.Title ?? Path.GetFileNameWithoutExtension(queue[queueIndex]);
+            NowPlaying.Text = currentTrack?.Title ?? System.IO.Path.GetFileNameWithoutExtension(queue[queueIndex]);
             NowArtist.Text = currentTrack?.Artist ?? "Artista desconhecido";
             NowAlbum.Text = currentTrack?.Album ?? "Arquivo local";
             DockTrack.Text = NowPlaying.Text;
@@ -411,8 +398,8 @@ public partial class MainWindow : Window
     {
         try
         {
-            string lrc = Path.ChangeExtension(audioPath, ".lrc");
-            string txt = Path.ChangeExtension(audioPath, ".txt");
+            string lrc = System.IO.Path.ChangeExtension(audioPath, ".lrc");
+            string txt = System.IO.Path.ChangeExtension(audioPath, ".txt");
             string? source = File.Exists(lrc) ? lrc : File.Exists(txt) ? txt : null;
             LyricsText.Text = source is null ? "Nenhuma letra local encontrada. Adicione um arquivo .lrc ou .txt com o mesmo nome da música." : File.ReadAllText(source).Trim();
         }
