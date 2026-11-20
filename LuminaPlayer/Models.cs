@@ -11,7 +11,8 @@ public sealed class AppConfig
     public List<string> Roots { get; set; } = new();
     public List<PlaylistGroup> Groups { get; set; } = new() { new PlaylistGroup() };
     public string Theme { get; set; } = "Dark";
-    public string Accent { get; set; } = "#8B7CFF";
+    public string Accent { get; set; } = "#B65CFF";
+    public string BackgroundImagePath { get; set; } = "";
     public bool Compact { get; set; }
     public bool ShowLibrary { get; set; } = true;
     public bool ShowPlaylists { get; set; } = true;

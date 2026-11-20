@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Brushes = System.Windows.Media.Brushes;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
@@ -20,6 +21,8 @@ public partial class MainWindow : Window
     private readonly AudioService audio = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private List<TrackEntry> visibleTracks = new();
+    private const int PageSize = 60;
+    private int currentPage;
     private List<string> queue = new();
     private int queueIndex = -1;
     private bool dragging;
@@ -40,6 +43,7 @@ public partial class MainWindow : Window
         BuildEq();
         ApplyPreferences();
         RootsList.ItemsSource = config.Roots.ToList();
+        FolderTiles.ItemsSource = config.Roots.Select(root => new FolderTileEntry(Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar)), root)).ToList();
         RefreshCollections();
         StatusText.Text = config.Roots.Count == 0 ? "Adicione uma pasta para começar" : "Preparando sua biblioteca local…";
         Loaded += async (_, _) => await LoadInitialLibraryAsync();
@@ -51,9 +55,9 @@ public partial class MainWindow : Window
     {
         for (int i = 0; i < 10; i++)
         {
-            var panel = new StackPanel { Margin = new Thickness(5, 0, 5, 0), Width = 38 };
-            panel.Children.Add(new TextBlock { Text = frequencies[i] >= 1000 ? $"{frequencies[i] / 1000:0.#}k" : $"{frequencies[i]:0}", Foreground = Brushes.Gainsboro, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, FontSize = 10 });
-            var slider = new Slider { Minimum = -12, Maximum = 12, Value = 0, Orientation = Orientation.Vertical, Height = 48, Width = 24, ToolTip = "Ganho em dB" };
+            var panel = new StackPanel { Margin = new Thickness(1, 0, 1, 0), Width = 25 };
+            panel.Children.Add(new TextBlock { Text = frequencies[i] >= 1000 ? $"{frequencies[i] / 1000:0.#}k" : $"{frequencies[i]:0}", Foreground = Brushes.Gainsboro, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, FontSize = 8 });
+            var slider = new Slider { Minimum = -12, Maximum = 12, Value = 0, Orientation = Orientation.Vertical, Height = 78, Width = 18, ToolTip = "Ganho em dB" };
             int band = i;
             slider.ValueChanged += (_, _) =>
             {
@@ -84,15 +88,26 @@ public partial class MainWindow : Window
     private void ApplyTheme()
     {
         bool light = config.Theme == "Light";
-        SetBrush("AppBg", light ? "#F2F3F8" : "#101116");
-        SetBrush("PanelBg", light ? "#FFFFFF" : "#171922");
-        SetBrush("SurfaceBg", light ? "#F0F1F6" : "#202330");
-        SetBrush("RaisedBg", light ? "#E5E6EF" : "#292D3B");
-        SetBrush("PrimaryText", light ? "#20212A" : "#F5F5FA");
-        SetBrush("SecondaryText", light ? "#686B7A" : "#A7A9BA");
-        SetBrush("Line", light ? "#DADCE6" : "#303444");
-        SetBrush("Accent", config.Accent);
-        Background = (Brush)Resources["AppBg"];
+        SetBrush("AppBg", light ? "#FFF2EEF8" : "#FF100D1B");
+        SetBrush("PanelBg", light ? "#EFFFFFFF" : "#E6191428");
+        SetBrush("SurfaceBg", light ? "#E6FFFFFF" : "#E6241D38");
+        SetBrush("RaisedBg", light ? "#FFF0E9FA" : "#FF30234A");
+        SetBrush("PrimaryText", light ? "#FF241A31" : "#FFF8F5FF");
+        SetBrush("SecondaryText", light ? "#FF756A83" : "#FFBDB3D0");
+        SetBrush("Line", light ? "#FFDCD2E8" : "#FF49365F");
+        SetBrush("Accent", "#B65CFF");
+        if (!string.IsNullOrWhiteSpace(config.BackgroundImagePath) && File.Exists(config.BackgroundImagePath))
+        {
+            try
+            {
+                var image = new BitmapImage();
+                image.BeginInit(); image.UriSource = new Uri(config.BackgroundImagePath, UriKind.Absolute);
+                image.CacheOption = BitmapCacheOption.OnLoad; image.DecodePixelWidth = 1800; image.EndInit(); image.Freeze();
+                Background = new ImageBrush(image) { Stretch = Stretch.UniformToFill, Opacity = 0.34 };
+            }
+            catch { Background = new LinearGradientBrush(light ? Color.FromRgb(245,239,250) : Color.FromRgb(34,18,55), light ? Color.FromRgb(222,211,239) : Color.FromRgb(13,12,25), 35); }
+        }
+        else Background = new LinearGradientBrush(light ? Color.FromRgb(245,239,250) : Color.FromRgb(34,18,55), light ? Color.FromRgb(222,211,239) : Color.FromRgb(13,12,25), 35);
         Foreground = (Brush)Resources["PrimaryText"];
     }
 
@@ -100,6 +115,7 @@ public partial class MainWindow : Window
     {
         RootsList.ItemsSource = null;
         RootsList.ItemsSource = config.Roots.ToList();
+        FolderTiles.ItemsSource = config.Roots.Select(root => new FolderTileEntry(Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar)), root)).ToList();
         RefreshCollections();
         RefreshTracks();
     }
@@ -123,8 +139,11 @@ public partial class MainWindow : Window
             .Select(p => new TrackEntry(Path.GetFileNameWithoutExtension(p), Path.GetFileName(p), p))
             .ToList();
         visibleTracks = tracks;
-        TracksList.ItemsSource = visibleTracks;
+        int pageCount = Math.Max(1, (int)Math.Ceiling(visibleTracks.Count / (double)PageSize));
+        currentPage = Math.Clamp(currentPage, 0, pageCount - 1);
+        TracksList.ItemsSource = visibleTracks.Skip(currentPage * PageSize).Take(PageSize).ToList();
         TrackCount.Text = $"{tracks.Count:N0} {(tracks.Count == 1 ? "faixa" : "faixas")}";
+        TrackPageLabel.Text = $"{currentPage + 1} / {pageCount}";
     }
 
     private async void AddFolder_Click(object sender, RoutedEventArgs e)
@@ -151,9 +170,20 @@ public partial class MainWindow : Window
 
     private void SetLibraryControlsEnabled(bool enabled) { SearchBox.IsEnabled = enabled; TracksList.IsEnabled = enabled; }
 
-    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) { if (IsLoaded) RefreshTracks(); }
-    private void AllMusic_Click(object sender, RoutedEventArgs e) { SearchBox.Text = ""; RefreshTracks(); }
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) { if (IsLoaded) { currentPage = 0; RefreshTracks(); } }
+    private void AllMusic_Click(object sender, RoutedEventArgs e) { SearchBox.Text = ""; currentPage = 0; RefreshTracks(); }
+    private void PreviousPage_Click(object sender, RoutedEventArgs e) { if (currentPage > 0) { currentPage--; RefreshTracks(); } }
+    private void NextPage_Click(object sender, RoutedEventArgs e) { if ((currentPage + 1) * PageSize < visibleTracks.Count) { currentPage++; RefreshTracks(); } }
     private void FocusFolders_Click(object sender, RoutedEventArgs e) { RootsList.Focus(); }
+
+    private void FolderTile_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.DataContext is not FolderTileEntry folder) return;
+        queue = library.Scan(folder.Path);
+        queueIndex = 0;
+        if (queue.Count > 0) PlayCurrent();
+        else StatusText.Text = "Nenhuma música encontrada nesta pasta";
+    }
 
     private void Track_DoubleClick(object sender, MouseButtonEventArgs e)
     {
@@ -193,8 +223,10 @@ public partial class MainWindow : Window
             audio.Play(queue[queueIndex]);
             audio.SetVolume(config.Volume, muted);
             NowPlaying.Text = Path.GetFileNameWithoutExtension(queue[queueIndex]);
+            DockTrack.Text = NowPlaying.Text;
             StatusText.Text = "Tocando agora · Arquivo local";
-            PlayButton.Content = "Ⅱ";
+            DockStatus.Text = "Tocando agora · Offline";
+            PlayButton.Content = "Ⅱ"; DockPlayButton.Content = "Ⅱ";
         }
         catch (Exception ex)
         {
@@ -212,8 +244,9 @@ public partial class MainWindow : Window
             return;
         }
         audio.TogglePause();
-        PlayButton.Content = audio.IsPlaying ? "Ⅱ" : "▶";
+        PlayButton.Content = audio.IsPlaying ? "Ⅱ" : "▶"; DockPlayButton.Content = PlayButton.Content;
         StatusText.Text = audio.IsPlaying ? "Tocando agora · Arquivo local" : "Pausado";
+        DockStatus.Text = audio.IsPlaying ? "Tocando agora · Offline" : "Pausado";
     }
 
     private void Previous_Click(object sender, RoutedEventArgs e)
@@ -278,7 +311,11 @@ public partial class MainWindow : Window
         Duration.Text = duration.ToString(@"m\:ss");
         if (!dragging && duration.TotalMilliseconds > 0)
             Progress.Value = position.TotalMilliseconds / duration.TotalMilliseconds * 1000;
-        if (audio.CurrentPath is not null) PlayButton.Content = audio.IsPlaying ? "Ⅱ" : "▶";
+        if (audio.CurrentPath is not null)
+        {
+            PlayButton.Content = audio.IsPlaying ? "Ⅱ" : "▶"; DockPlayButton.Content = PlayButton.Content;
+            DockElapsed.Text = Elapsed.Text; DockDuration.Text = Duration.Text; DockProgress.Value = Progress.Value;
+        }
     }
 
     private void Progress_MouseDown(object sender, MouseButtonEventArgs e) => dragging = true;
@@ -379,17 +416,58 @@ public partial class MainWindow : Window
         AddMenu(menu, "Mostrar/ocultar equalizador", () => { config.ShowEqualizer = !config.ShowEqualizer; EqualizerCard.Visibility = config.ShowEqualizer ? Visibility.Visible : Visibility.Collapsed; ConfigStore.Save(config); });
         AddMenu(menu, "Mostrar/ocultar barra lateral", () => { SidebarBorder.Visibility = SidebarBorder.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible; });
         AddMenu(menu, "Layout compacto", () => { config.Compact = !config.Compact; Height = config.Compact ? 720 : 850; Width = config.Compact ? 1180 : 1440; ConfigStore.Save(config); });
-        AddMenu(menu, "Acento violeta", () => SetAccent("#A78BFA"));
-        AddMenu(menu, "Acento azul", () => SetAccent("#60A5FA"));
-        AddMenu(menu, "Acento verde", () => SetAccent("#34D399"));
-        AddMenu(menu, "Acento rosa", () => SetAccent("#F472B6"));
+        AddMenu(menu, "Escolher imagem de fundo…", ChooseBackgroundImage);
+        AddMenu(menu, "Remover imagem de fundo", ClearBackgroundImage);
+        AddMenu(menu, "Nova categoria", () => NewGroup_Click(this, new RoutedEventArgs()));
+        AddMenu(menu, "Nova playlist", () => NewPlaylist_Click(this, new RoutedEventArgs()));
+        AddMenu(menu, "Adicionar seleção à playlist", () => AddToPlaylist_Click(this, new RoutedEventArgs()));
         AddMenu(menu, "Renomear categoria selecionada", () => RenameGroup_Click(this, new RoutedEventArgs()));
         AddMenu(menu, "Gerenciar pastas vinculadas", ManageRoots);
         AddMenu(menu, "Sobre o Lumina Player", () => MessageBox.Show("Lumina Player\nReprodutor de música local e offline.\n\nProjetado para baixo consumo: sem streaming, anúncios ou serviços em segundo plano.", "Sobre", MessageBoxButton.OK, MessageBoxImage.Information));
         menu.IsOpen = true;
     }
 
-    private void SetAccent(string color) { config.Accent = color; ApplyTheme(); ConfigStore.Save(config); }
+    private void ChooseBackgroundImage()
+    {
+        var dialog = new OpenFileDialog { Title = "Escolha uma imagem para o fundo", Filter = "Imagens|*.png;*.jpg;*.jpeg;*.bmp;*.webp", CheckFileExists = true };
+        if (dialog.ShowDialog(this) != true) return;
+        config.BackgroundImagePath = dialog.FileName;
+        ApplyTheme(); ConfigStore.Save(config);
+    }
+
+    private void ClearBackgroundImage()
+    {
+        config.BackgroundImagePath = "";
+        ApplyTheme(); ConfigStore.Save(config);
+    }
+
+    private void ShowEqualizer_Click(object sender, RoutedEventArgs e)
+    {
+        config.ShowEqualizer = !config.ShowEqualizer;
+        EqualizerCard.Visibility = config.ShowEqualizer ? Visibility.Visible : Visibility.Collapsed;
+        ConfigStore.Save(config);
+    }
+
+    private void FocusCollections_Click(object sender, RoutedEventArgs e) => CollectionsList.Focus();
+
+    private void Shuffle_Click(object sender, RoutedEventArgs e)
+    {
+        if (queue.Count == 0)
+        {
+            queue = visibleTracks.Select(t => t.Path).ToList();
+            if (queue.Count == 0) return;
+            queue = queue.OrderBy(_ => Random.Shared.Next()).ToList();
+            queueIndex = 0;
+            PlayCurrent();
+            return;
+        }
+        var current = queueIndex >= 0 && queueIndex < queue.Count ? queue[queueIndex] : null;
+        var remaining = queue.Skip(Math.Max(queueIndex + 1, 0)).OrderBy(_ => Random.Shared.Next()).ToList();
+        queue = (current is null ? new List<string>() : new List<string> { current }).Concat(remaining).ToList();
+        queueIndex = current is null ? 0 : 0;
+        StatusText.Text = "Fila embaralhada";
+        DockStatus.Text = "Fila embaralhada";
+    }
 
     private static void AddMenu(ContextMenu menu, string title, Action action)
     {
@@ -414,3 +492,4 @@ public partial class MainWindow : Window
 }
 
 public sealed record TrackEntry(string Title, string FileName, string Path);
+public sealed record FolderTileEntry(string Name, string Path);

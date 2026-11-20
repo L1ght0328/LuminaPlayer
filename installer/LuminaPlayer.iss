@@ -1,5 +1,5 @@
 #define MyAppName "Lumina Player"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "Lumina Player"
 #define MyAppExeName "LuminaPlayer.exe"
 

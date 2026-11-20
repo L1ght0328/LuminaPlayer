@@ -1,52 +1,57 @@
-# Lumina Player — Windows 10/11 x64
+# Lumina Player 1.1.0 — Windows x64
 
-Reprodutor de música local, offline e leve, construído em C#/.NET 8 com WPF e NAudio.
+Reprodutor local/offline em C# + WPF (.NET 8) e NAudio. O projeto foi redesenhado para se aproximar da referência visual `design/lumina-player-visual-reference.png`.
 
-## Prioridades de projeto
+## Interface
 
-- Sem streaming, anúncios, telemetria, serviços em segundo plano ou conexão obrigatória com a internet.
-- Interface WPF nativa, sem animações contínuas nem capas baixadas da internet.
-- Atualização do relógio do player a cada 500 ms.
-- Biblioteca indexada em memória durante a sessão para evitar revarrer o disco a cada tecla digitada na busca.
-- Configurações pequenas em JSON dentro de `%AppData%\LuminaPlayer`.
-- Publicação self-contained x64: o usuário final não precisa instalar o .NET separadamente.
+- Navegação lateral, busca, faixa de boas-vindas, cartões locais e painel lateral de reprodução.
+- Barra inferior de transporte e controles de volume.
+- Tema escuro/claro com violeta fixo como cor de marca.
+- Imagem de fundo local opcional; apenas o fundo muda, não a cor de marca.
+- Equalizador de 10 bandas com presets e presets personalizados.
 
-## Recursos
+## Funcionalidade atual
 
-- Adicionar pastas locais e pesquisar músicas.
-- Reprodução, pausa, anterior, próxima, seek, volume e mudo.
-- Repetição de faixa e de fila.
-- Playlists e categorias locais.
-- Equalizador de 10 bandas com presets Flat, Bass Boost, Rock e Pop, além de presets personalizados.
-- Tema claro/escuro e acento configurável no arquivo de configuração.
-- Atalhos: Espaço para play/pause; Ctrl+Seta esquerda/direita para faixa anterior/próxima.
+- Adicionar pastas locais e pesquisar arquivos de áudio pelo nome.
+- Biblioteca apresentada em páginas de até 60 cartões para limitar o número de elementos visuais ativos.
+- Duplo clique em uma faixa para reproduzir; play/pause, anterior/próxima, seek, volume, mudo, repetição e embaralhar fila.
+- Criar categorias e playlists e adicionar seleção de faixas a uma playlist.
+- Configurações guardadas em `%AppData%\LuminaPlayer\config.json`.
 
-## Formatos de áudio
+A arte dos cartões é um marcador visual local, não uma extração de capas incorporadas nos ficheiros. Artistas, géneros, letras sincronizadas e metadados de álbum ainda não estão implementados. A reprodução depende dos formatos/decoders disponíveis via NAudio e Media Foundation no Windows.
 
-A reprodução usa NAudio e os decodificadores disponíveis no Windows Media Foundation. MP3 e WAV são os formatos de referência. M4A/AAC, WMA, AIFF e FLAC dependem dos codecs presentes na versão do Windows. OGG/Opus podem não estar disponíveis em instalações padrão do Windows; não são prometidos como compatíveis nesta compilação.
+## Desempenho
 
-## Gerar o instalador no GitHub Actions
+- WPF nativo; sem WebView, streaming, telemetria ou serviços residentes.
+- Sem animações decorativas contínuas.
+- Timer de interface limitado a 500 ms.
+- Digitalização de pastas executada fora da thread da interface.
+- No máximo 60 cartões de música materializados por página.
+- Imagem de fundo opcional reduzida para até 1800 px de largura e carregada uma vez.
+- EQ usa DSP local e não cria threads por banda.
 
-1. Envie o conteúdo desta pasta para um repositório GitHub.
-2. Confirme que `.github/workflows/build-windows.yml` está presente.
-3. Abra a aba **Actions**.
-4. Selecione **Build Windows installer** e use **Run workflow** na branch `main`.
-5. Ao terminar com ✓ verde, abra a execução e baixe o artifact `LuminaPlayer-Setup-win-x64`.
-6. Extraia o ZIP do artifact. Dentro dele estará `LuminaPlayer-Setup-win-x64.exe`.
+O consumo real de RAM/CPU depende do dispositivo, do formato de áudio e do driver de áudio e deve ser medido no Windows após a compilação.
 
-## Gerar localmente em Windows
+## Compilar no Windows
 
-Requisitos para quem compila: .NET 8 SDK e Inno Setup 6.
-
-Abra PowerShell na pasta do projeto e execute:
+Requisitos: Windows 10/11 x64, .NET 8 SDK e Inno Setup 6.
 
 ```powershell
-./publish.ps1
+.\publish.ps1
+```
+
+Para criar o instalador com Inno Setup instalado:
+
+```powershell
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer/LuminaPlayer.iss
 ```
 
-O instalador será criado em `dist/LuminaPlayer-Setup-win-x64.exe`.
+O instalador será gerado em `dist/LuminaPlayer-Setup-win-x64.exe`.
+
+## GitHub Actions
+
+O workflow `.github/workflows/build-windows.yml` pode ser iniciado manualmente pela aba Actions. Ao terminar, descarregue o artefacto `LuminaPlayer-Setup-win-x64`.
 
 ## Observação de validação
 
-O código deve ser compilado e testado em Windows x64 antes de distribuir a terceiros. Este pacote contém o projeto e o pipeline de build; não contém um binário `.exe` pré-compilado.
+Este pacote contém o código-fonte atualizado. A compilação WPF e o teste de execução precisam ser validados num runner Windows; não declarar a aplicação pronta até o workflow terminar com sucesso e o instalador abrir corretamente.
