@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Brushes = System.Windows.Media.Brushes;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
@@ -26,11 +27,15 @@ public partial class MainWindow : Window
     private List<string> queue = new();
     private int queueIndex = -1;
     private bool dragging;
+    private bool syncingProgress;
     private bool muted;
     private string loopMode = "Off";
     private readonly Slider[] eqSliders = new Slider[10];
     private readonly double[] frequencies = {31,62,125,250,500,1000,2000,4000,8000,16000};
     private bool loadingPresets;
+    private string currentView = "All";
+    private string? selectedRoot;
+    private TrackEntry? currentTrack;
 
     public MainWindow()
     {
@@ -43,7 +48,7 @@ public partial class MainWindow : Window
         BuildEq();
         ApplyPreferences();
         RootsList.ItemsSource = config.Roots.ToList();
-        FolderTiles.ItemsSource = config.Roots.Select(root => new FolderTileEntry(Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar)), root)).ToList();
+        FolderTiles.ItemsSource = config.Roots.Select(root => new FolderTileEntry(Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar)), root, "Carregando…")).ToList();
         RefreshCollections();
         StatusText.Text = config.Roots.Count == 0 ? "Adicione uma pasta para começar" : "Preparando sua biblioteca local…";
         Loaded += async (_, _) => await LoadInitialLibraryAsync();
@@ -70,6 +75,9 @@ public partial class MainWindow : Window
             EqPanel.Children.Add(panel);
             if (config.EqBands.TryGetValue(i.ToString(), out double value)) slider.Value = value;
         }
+        foreach (string presetName in config.EqPresets.Keys.OrderBy(k => k, StringComparer.CurrentCultureIgnoreCase))
+            if (!PresetCombo.Items.Cast<object>().OfType<ComboBoxItem>().Any(i => string.Equals(i.Content?.ToString(), presetName, StringComparison.OrdinalIgnoreCase)))
+                PresetCombo.Items.Add(new ComboBoxItem { Content = presetName });
     }
 
     private void ApplyPreferences()
@@ -95,7 +103,8 @@ public partial class MainWindow : Window
         SetBrush("PrimaryText", light ? "#FF241A31" : "#FFF8F5FF");
         SetBrush("SecondaryText", light ? "#FF756A83" : "#FFBDB3D0");
         SetBrush("Line", light ? "#FFDCD2E8" : "#FF49365F");
-        SetBrush("Accent", "#B65CFF");
+        SetBrush("Accent", string.IsNullOrWhiteSpace(config.Accent) ? "#B65CFF" : config.Accent);
+        SetBrush("AccentSoft", config.Theme == "Light" ? "#FFE8D8FA" : "#49306D");
         if (!string.IsNullOrWhiteSpace(config.BackgroundImagePath) && File.Exists(config.BackgroundImagePath))
         {
             try
@@ -115,7 +124,7 @@ public partial class MainWindow : Window
     {
         RootsList.ItemsSource = null;
         RootsList.ItemsSource = config.Roots.ToList();
-        FolderTiles.ItemsSource = config.Roots.Select(root => new FolderTileEntry(Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar)), root)).ToList();
+        FolderTiles.ItemsSource = config.Roots.Select(root => new FolderTileEntry(Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar)), root, $"{library.CountForRoot(root):N0} itens")).ToList();
         RefreshCollections();
         RefreshTracks();
     }
@@ -134,17 +143,62 @@ public partial class MainWindow : Window
     private void RefreshTracks()
     {
         string query = SearchBox.Text?.Trim() ?? "";
-        var tracks = library.AllTracks()
-            .Where(p => Path.GetFileNameWithoutExtension(p).Contains(query, StringComparison.OrdinalIgnoreCase) || Path.GetFileName(p).Contains(query, StringComparison.OrdinalIgnoreCase))
-            .Select(p => new TrackEntry(Path.GetFileNameWithoutExtension(p), Path.GetFileName(p), p))
-            .ToList();
-        visibleTracks = tracks;
+        var all = library.AllEntries();
+        IEnumerable<TrackEntry> filtered = all.Where(t =>
+            t.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            t.Artist.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            t.Album.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            t.Genre.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            t.FileName.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+        if (currentView == "Folders" && !string.IsNullOrWhiteSpace(selectedRoot))
+            filtered = filtered.Where(t => t.Path.StartsWith(selectedRoot, StringComparison.OrdinalIgnoreCase));
+        else if (currentView == "Albums") filtered = filtered.GroupBy(t => t.Artist + "|" + t.Album).Select(g =>
+        {
+            var first = g.First();
+            return new TrackEntry { Title = first.Album, Artist = first.Artist, Album = first.Album, Genre = first.Genre, Path = first.Path, FileName = first.FileName, CoverPath = first.CoverPath, CoverBrush = first.CoverBrush };
+        });
+        else if (currentView == "Artists") filtered = filtered.GroupBy(t => t.Artist).Select(g =>
+        {
+            var first = g.First();
+            return new TrackEntry { Title = first.Artist, Artist = first.Artist, Album = $"{g.Count()} faixas", Genre = first.Genre, Path = first.Path, FileName = first.FileName, CoverPath = first.CoverPath, CoverBrush = first.CoverBrush };
+        });
+        else if (currentView == "Genres") filtered = filtered.GroupBy(t => t.Genre).Select(g =>
+        {
+            var first = g.First();
+            return new TrackEntry { Title = first.Genre, Artist = $"{g.Count()} faixas", Album = "Gênero musical", Genre = first.Genre, Path = first.Path, FileName = first.FileName, CoverPath = first.CoverPath, CoverBrush = first.CoverBrush };
+        });
+
+        visibleTracks = filtered.OrderBy(t => t.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
         int pageCount = Math.Max(1, (int)Math.Ceiling(visibleTracks.Count / (double)PageSize));
         currentPage = Math.Clamp(currentPage, 0, pageCount - 1);
         TracksList.ItemsSource = visibleTracks.Skip(currentPage * PageSize).Take(PageSize).ToList();
-        TrackCount.Text = $"{tracks.Count:N0} {(tracks.Count == 1 ? "faixa" : "faixas")}";
+        string unit = currentView switch { "Albums" => "álbuns", "Artists" => "artistas", "Genres" => "gêneros", _ => "faixas" };
+        TrackCount.Text = $"{visibleTracks.Count:N0} {unit}";
         TrackPageLabel.Text = $"{currentPage + 1} / {pageCount}";
+        UpdateTabStyles();
     }
+
+    private void UpdateTabStyles()
+    {
+        var active = (Brush)Resources["AccentSoft"];
+        foreach (var pair in new[] { ("All", TabAll), ("Music", TabMusic), ("Albums", TabAlbums), ("Artists", TabArtists), ("Genres", TabGenres), ("Folders", TabFolders) })
+            pair.Item2.Background = currentView == pair.Item1 ? active : Brushes.Transparent;
+    }
+
+    private void SetView(string view)
+    {
+        currentView = view;
+        currentPage = 0;
+        RefreshTracks();
+    }
+
+    private void TabAll_Click(object sender, RoutedEventArgs e) => SetView("All");
+    private void TabMusic_Click(object sender, RoutedEventArgs e) => SetView("Music");
+    private void TabAlbums_Click(object sender, RoutedEventArgs e) => SetView("Albums");
+    private void TabArtists_Click(object sender, RoutedEventArgs e) => SetView("Artists");
+    private void TabGenres_Click(object sender, RoutedEventArgs e) => SetView("Genres");
+    private void TabFolders_Click(object sender, RoutedEventArgs e) => SetView("Folders");
 
     private async void AddFolder_Click(object sender, RoutedEventArgs e)
     {
@@ -153,17 +207,32 @@ public partial class MainWindow : Window
         StatusText.Text = "Adicionando pasta à biblioteca…";
         SetLibraryControlsEnabled(false);
         List<string> found;
-        try { found = await Task.Run(() => library.Scan(dialog.FolderName)); }
+        try
+        {
+            found = await Task.Run(() =>
+            {
+                var files = library.Scan(dialog.FolderName);
+                _ = library.AllEntries(); // lê tags/capas fora da thread visual
+                return files;
+            });
+            RefreshAll();
+            StatusText.Text = found.Count == 0
+                ? "Pasta adicionada, mas nenhum áudio compatível foi encontrado. Verifique se há MP3, WAV, FLAC, M4A, AAC ou WMA."
+                : $"{found.Count:N0} músicas encontradas · Clique numa capa para reproduzir";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Não foi possível ler essa pasta.";
+            MessageBox.Show(ex.Message, "Lumina Player", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
         finally { SetLibraryControlsEnabled(true); }
-        RefreshAll();
-        StatusText.Text = $"{found.Count:N0} músicas encontradas · Biblioteca local";
     }
 
     private async Task LoadInitialLibraryAsync()
     {
         SetLibraryControlsEnabled(false);
-        int count = await Task.Run(() => library.AllTracks().Count);
-        RefreshTracks();
+        int count = await Task.Run(() => library.AllEntries().Count);
+        RefreshAll();
         SetLibraryControlsEnabled(true);
         StatusText.Text = count == 0 ? "Biblioteca local vazia · Adicione uma pasta" : $"{count:N0} músicas disponíveis · Offline";
     }
@@ -171,34 +240,123 @@ public partial class MainWindow : Window
     private void SetLibraryControlsEnabled(bool enabled) { SearchBox.IsEnabled = enabled; TracksList.IsEnabled = enabled; }
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) { if (IsLoaded) { currentPage = 0; RefreshTracks(); } }
-    private void AllMusic_Click(object sender, RoutedEventArgs e) { SearchBox.Text = ""; currentPage = 0; RefreshTracks(); }
+    private void AllMusic_Click(object sender, RoutedEventArgs e) { SearchBox.Text = ""; SetView("All"); }
     private void PreviousPage_Click(object sender, RoutedEventArgs e) { if (currentPage > 0) { currentPage--; RefreshTracks(); } }
     private void NextPage_Click(object sender, RoutedEventArgs e) { if ((currentPage + 1) * PageSize < visibleTracks.Count) { currentPage++; RefreshTracks(); } }
-    private void FocusFolders_Click(object sender, RoutedEventArgs e) { RootsList.Focus(); }
+    private void FocusFolders_Click(object sender, RoutedEventArgs e)
+    {
+        currentView = "Folders";
+        RootsList.Focus();
+        if (RootsList.SelectedItem is string root) selectedRoot = root;
+        currentPage = 0;
+        RefreshTracks();
+        StatusText.Text = "Escolha uma pasta para filtrar sua biblioteca.";
+    }
 
-    private void FolderTile_Click(object sender, RoutedEventArgs e)
+    private void Root_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (RootsList.SelectedItem is not string root) return;
+        selectedRoot = root;
+        currentView = "Folders";
+        currentPage = 0;
+        RefreshTracks();
+        StatusText.Text = $"Pasta selecionada: {Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar))}";
+    }
+
+    private async void FolderTile_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as Button)?.DataContext is not FolderTileEntry folder) return;
-        queue = library.Scan(folder.Path);
-        queueIndex = 0;
-        if (queue.Count > 0) PlayCurrent();
-        else StatusText.Text = "Nenhuma música encontrada nesta pasta";
+        StatusText.Text = "Preparando a pasta…";
+        try
+        {
+            var files = await Task.Run(() => { var found = library.Scan(folder.Path); _ = library.AllEntries(); return found; });
+            RefreshAll();
+            queue = files;
+            queueIndex = 0;
+            if (queue.Count > 0) PlayCurrent();
+            else StatusText.Text = "Nenhuma música compatível encontrada nesta pasta";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Não foi possível abrir esta pasta.";
+            MessageBox.Show(ex.Message, "Lumina Player", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void Track_DoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (TracksList.SelectedItem is not TrackEntry selected) return;
-        queue = visibleTracks.Select(t => t.Path).ToList();
+        var all = library.AllEntries();
+        queue = currentView switch
+        {
+            "Albums" => all.Where(t => t.Album == selected.Album && t.Artist == selected.Artist).Select(t => t.Path).ToList(),
+            "Artists" => all.Where(t => t.Artist == selected.Artist).Select(t => t.Path).ToList(),
+            "Genres" => all.Where(t => t.Genre == selected.Genre).Select(t => t.Path).ToList(),
+            _ => visibleTracks.Select(t => t.Path).ToList()
+        };
         queueIndex = queue.IndexOf(selected.Path);
         PlayCurrent();
     }
 
-    private void Root_DoubleClick(object sender, MouseButtonEventArgs e)
+    private void TrackCard_Click(object sender, RoutedEventArgs e)
     {
-        if (RootsList.SelectedItem is not string root) return;
-        queue = library.Scan(root);
+        if ((sender as FrameworkElement)?.DataContext is not TrackEntry selected) return;
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+        {
+            if (TracksList.SelectedItems.Contains(selected)) TracksList.SelectedItems.Remove(selected);
+            else TracksList.SelectedItems.Add(selected);
+            return;
+        }
+        TracksList.SelectedItem = selected;
+        PlayTrack(selected);
+    }
+
+    private void PlayTrack(TrackEntry selected)
+    {
+        var all = library.AllEntries();
+        queue = currentView switch
+        {
+            "Albums" => all.Where(t => t.Album == selected.Album && t.Artist == selected.Artist).Select(t => t.Path).ToList(),
+            "Artists" => all.Where(t => t.Artist == selected.Artist).Select(t => t.Path).ToList(),
+            "Genres" => all.Where(t => t.Genre == selected.Genre).Select(t => t.Path).ToList(),
+            _ => visibleTracks.Select(t => t.Path).ToList()
+        };
+        queueIndex = queue.IndexOf(selected.Path);
+        if (queueIndex < 0) { queue = new List<string> { selected.Path }; queueIndex = 0; }
+        PlayCurrent();
+    }
+
+    private void PlayAll_Click(object sender, RoutedEventArgs e)
+    {
+        queue = visibleTracks.Select(t => t.Path).ToList();
+        if (queue.Count == 0)
+        {
+            StatusText.Text = "Nenhuma faixa encontrada. Adicione uma pasta com arquivos de áudio compatíveis.";
+            return;
+        }
         queueIndex = 0;
         PlayCurrent();
+    }
+
+    private void Playlists_Click(object sender, RoutedEventArgs e)
+    {
+        CollectionsList.Focus();
+        StatusText.Text = "Escolha uma playlist na barra lateral. Dê duplo clique para reproduzir.";
+    }
+
+    private void Collection_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CollectionsList.SelectedItem is string label && !label.StartsWith("▾"))
+            StatusText.Text = $"Playlist selecionada: {label.Replace("♫", "").Trim()} · duplo clique para tocar";
+    }
+
+    private async void Root_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (RootsList.SelectedItem is not string root) return;
+        StatusText.Text = "Preparando a pasta…";
+        queue = await Task.Run(() => { var files = library.Scan(root); _ = library.AllEntries(); return files; });
+        queueIndex = 0;
+        if (queue.Count > 0) PlayCurrent();
     }
 
     private void Collection_DoubleClick(object sender, MouseButtonEventArgs e)
@@ -221,9 +379,23 @@ public partial class MainWindow : Window
         try
         {
             audio.Play(queue[queueIndex]);
+            for (int i = 0; i < eqSliders.Length; i++) audio.SetBand(i, eqSliders[i].Value);
             audio.SetVolume(config.Volume, muted);
-            NowPlaying.Text = Path.GetFileNameWithoutExtension(queue[queueIndex]);
+            currentTrack = library.AllEntries().FirstOrDefault(t => string.Equals(t.Path, queue[queueIndex], StringComparison.OrdinalIgnoreCase));
+            NowPlaying.Text = currentTrack?.Title ?? Path.GetFileNameWithoutExtension(queue[queueIndex]);
+            NowArtist.Text = currentTrack?.Artist ?? "Artista desconhecido";
+            NowAlbum.Text = currentTrack?.Album ?? "Arquivo local";
             DockTrack.Text = NowPlaying.Text;
+            NowCover.Source = null;
+            DockCover.Source = null;
+            if (!string.IsNullOrWhiteSpace(currentTrack?.CoverPath) && File.Exists(currentTrack.CoverPath))
+            {
+                var cover = new BitmapImage();
+                cover.BeginInit(); cover.UriSource = new Uri(currentTrack.CoverPath, UriKind.Absolute); cover.CacheOption = BitmapCacheOption.OnLoad; cover.DecodePixelWidth = 480; cover.EndInit(); cover.Freeze();
+                NowCover.Source = cover; DockCover.Source = cover; NowCoverGlyph.Visibility = Visibility.Collapsed; DockCoverGlyph.Visibility = Visibility.Collapsed;
+            }
+            else { NowCoverGlyph.Visibility = Visibility.Visible; DockCoverGlyph.Visibility = Visibility.Visible; }
+            LoadLyrics(queue[queueIndex]);
             StatusText.Text = "Tocando agora · Arquivo local";
             DockStatus.Text = "Tocando agora · Offline";
             PlayButton.Content = "Ⅱ"; DockPlayButton.Content = "Ⅱ";
@@ -235,14 +407,30 @@ public partial class MainWindow : Window
         }
     }
 
+    private void LoadLyrics(string audioPath)
+    {
+        try
+        {
+            string lrc = Path.ChangeExtension(audioPath, ".lrc");
+            string txt = Path.ChangeExtension(audioPath, ".txt");
+            string? source = File.Exists(lrc) ? lrc : File.Exists(txt) ? txt : null;
+            LyricsText.Text = source is null ? "Nenhuma letra local encontrada. Adicione um arquivo .lrc ou .txt com o mesmo nome da música." : File.ReadAllText(source).Trim();
+        }
+        catch { LyricsText.Text = "Não foi possível carregar as letras locais."; }
+    }
+
     private void PlayPause_Click(object sender, RoutedEventArgs e)
     {
         if (audio.CurrentPath is null)
         {
             if (queue.Count == 0) { queue = visibleTracks.Select(t => t.Path).ToList(); queueIndex = 0; }
+            if (queue.Count == 0) { StatusText.Text = "Adicione uma pasta que contenha músicas compatíveis."; return; }
             PlayCurrent();
             return;
         }
+        var playbackTime = audio.GetTime();
+        if (playbackTime.Duration > TimeSpan.Zero && playbackTime.Position >= playbackTime.Duration)
+            audio.Seek(TimeSpan.Zero);
         audio.TogglePause();
         PlayButton.Content = audio.IsPlaying ? "Ⅱ" : "▶"; DockPlayButton.Content = PlayButton.Content;
         StatusText.Text = audio.IsPlaying ? "Tocando agora · Arquivo local" : "Pausado";
@@ -274,7 +462,7 @@ public partial class MainWindow : Window
         if (loopMode == "One") { PlayCurrent(); return; }
         if (queueIndex + 1 < queue.Count) { queueIndex++; PlayCurrent(); }
         else if (loopMode == "Playlist") { queueIndex = 0; PlayCurrent(); }
-        else { PlayButton.Content = "▶"; StatusText.Text = "Fim da fila"; }
+        else { PlayButton.Content = "▶"; DockPlayButton.Content = "▶"; StatusText.Text = "Fim da fila"; DockStatus.Text = "Fim da fila"; }
     }
 
     private void Loop_Click(object sender, RoutedEventArgs e)
@@ -310,11 +498,25 @@ public partial class MainWindow : Window
         Elapsed.Text = position.ToString(@"m\:ss");
         Duration.Text = duration.ToString(@"m\:ss");
         if (!dragging && duration.TotalMilliseconds > 0)
-            Progress.Value = position.TotalMilliseconds / duration.TotalMilliseconds * 1000;
+        {
+            double value = position.TotalMilliseconds / duration.TotalMilliseconds * 1000;
+            syncingProgress = true;
+            Progress.Value = value;
+            DockProgress.Value = value;
+            syncingProgress = false;
+        }
         if (audio.CurrentPath is not null)
         {
             PlayButton.Content = audio.IsPlaying ? "Ⅱ" : "▶"; DockPlayButton.Content = PlayButton.Content;
             DockElapsed.Text = Elapsed.Text; DockDuration.Text = Duration.Text; DockProgress.Value = Progress.Value;
+        }
+        float level = audio.IsPlaying ? audio.Level : 0f;
+        int barIndex = 0;
+        foreach (var bar in VisualizerBars.Children.OfType<Rectangle>())
+        {
+            double modulation = 0.28 + 0.72 * Math.Abs(Math.Sin((barIndex + 1) * 0.83));
+            bar.Height = Math.Max(3, 3 + level * 27 * modulation);
+            barIndex++;
         }
     }
 
@@ -326,7 +528,30 @@ public partial class MainWindow : Window
         if (duration.TotalMilliseconds > 0)
             audio.Seek(TimeSpan.FromMilliseconds(duration.TotalMilliseconds * Progress.Value / 1000));
     }
-    private void Progress_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { }
+    private void Progress_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (syncingProgress || DockProgress is null) return;
+        syncingProgress = true;
+        DockProgress.Value = Progress.Value;
+        syncingProgress = false;
+    }
+
+    private void DockProgress_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (syncingProgress || Progress is null) return;
+        syncingProgress = true;
+        Progress.Value = DockProgress.Value;
+        syncingProgress = false;
+    }
+
+    private void DockProgress_MouseDown(object sender, MouseButtonEventArgs e) => dragging = true;
+    private void DockProgress_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        dragging = false;
+        var (_, duration) = audio.GetTime();
+        if (duration.TotalMilliseconds > 0)
+            audio.Seek(TimeSpan.FromMilliseconds(duration.TotalMilliseconds * DockProgress.Value / 1000));
+    }
 
     private void Preset_Changed(object sender, SelectionChangedEventArgs e)
     {
@@ -418,13 +643,25 @@ public partial class MainWindow : Window
         AddMenu(menu, "Layout compacto", () => { config.Compact = !config.Compact; Height = config.Compact ? 720 : 850; Width = config.Compact ? 1180 : 1440; ConfigStore.Save(config); });
         AddMenu(menu, "Escolher imagem de fundo…", ChooseBackgroundImage);
         AddMenu(menu, "Remover imagem de fundo", ClearBackgroundImage);
+        AddMenu(menu, "Cor de destaque: Roxo", () => SetAccent("#B65CFF"));
+        AddMenu(menu, "Cor de destaque: Azul", () => SetAccent("#579BFF"));
+        AddMenu(menu, "Cor de destaque: Rosa", () => SetAccent("#F05FAF"));
+        AddMenu(menu, "Cor de destaque: Verde", () => SetAccent("#45C6A3"));
         AddMenu(menu, "Nova categoria", () => NewGroup_Click(this, new RoutedEventArgs()));
         AddMenu(menu, "Nova playlist", () => NewPlaylist_Click(this, new RoutedEventArgs()));
         AddMenu(menu, "Adicionar seleção à playlist", () => AddToPlaylist_Click(this, new RoutedEventArgs()));
         AddMenu(menu, "Renomear categoria selecionada", () => RenameGroup_Click(this, new RoutedEventArgs()));
+        AddMenu(menu, "Reexaminar biblioteca", RescanLibrary);
         AddMenu(menu, "Gerenciar pastas vinculadas", ManageRoots);
         AddMenu(menu, "Sobre o Lumina Player", () => MessageBox.Show("Lumina Player\nReprodutor de música local e offline.\n\nProjetado para baixo consumo: sem streaming, anúncios ou serviços em segundo plano.", "Sobre", MessageBoxButton.OK, MessageBoxImage.Information));
         menu.IsOpen = true;
+    }
+
+    private void SetAccent(string color)
+    {
+        config.Accent = color;
+        ApplyTheme();
+        ConfigStore.Save(config);
     }
 
     private void ChooseBackgroundImage()
@@ -476,6 +713,29 @@ public partial class MainWindow : Window
         menu.Items.Add(item);
     }
 
+    private async void RescanLibrary()
+    {
+        StatusText.Text = "Reexaminando pastas e arquivos de áudio…";
+        SetLibraryControlsEnabled(false);
+        try
+        {
+            await Task.Run(() =>
+            {
+                foreach (string root in config.Roots.ToList())
+                    if (Directory.Exists(root)) library.Scan(root);
+                _ = library.AllEntries();
+            });
+            RefreshAll();
+            StatusText.Text = $"{library.AllEntries().Count:N0} faixas encontradas · Biblioteca atualizada";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Não foi possível atualizar a biblioteca.";
+            MessageBox.Show(ex.Message, "Lumina Player", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally { SetLibraryControlsEnabled(true); }
+    }
+
     private void ManageRoots()
     {
         if (config.Roots.Count == 0) { MessageBox.Show("Nenhuma pasta foi adicionada."); return; }
@@ -491,5 +751,3 @@ public partial class MainWindow : Window
     }
 }
 
-public sealed record TrackEntry(string Title, string FileName, string Path);
-public sealed record FolderTileEntry(string Name, string Path);

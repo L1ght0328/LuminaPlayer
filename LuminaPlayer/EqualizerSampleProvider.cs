@@ -11,6 +11,8 @@ public sealed class EqualizerSampleProvider : ISampleProvider
     private readonly double[] centers = { 31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
     private readonly object gate = new();
     private readonly bool[] activeBands = new bool[10];
+    private float level;
+    public float Level => Volatile.Read(ref level);
 
     public EqualizerSampleProvider(ISampleProvider source)
     {
@@ -39,19 +41,26 @@ public sealed class EqualizerSampleProvider : ISampleProvider
     public int Read(float[] buffer, int offset, int count)
     {
         int read = source.Read(buffer, offset, count);
+        float peak = 0;
         lock (gate)
         {
-            if (!activeBands.Any(active => active)) return read;
+            bool hasActiveBand = activeBands.Any(active => active);
             int channels = WaveFormat.Channels;
             for (int n = 0; n < read; n++)
             {
-                int ch = n % channels;
                 float sample = buffer[offset + n];
-                for (int band = 0; band < centers.Length; band++)
-                    if (activeBands[band]) sample = filters[ch][band].Process(sample);
-                buffer[offset + n] = Math.Clamp(sample, -1f, 1f);
+                if (hasActiveBand)
+                {
+                    int ch = n % channels;
+                    for (int band = 0; band < centers.Length; band++)
+                        if (activeBands[band]) sample = filters[ch][band].Process(sample);
+                    sample = Math.Clamp(sample, -1f, 1f);
+                    buffer[offset + n] = sample;
+                }
+                peak = Math.Max(peak, Math.Abs(sample));
             }
         }
+        Volatile.Write(ref level, peak);
         return read;
     }
 

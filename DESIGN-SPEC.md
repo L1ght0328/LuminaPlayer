@@ -1,36 +1,30 @@
-# Lumina Player — visual and implementation baseline
+# Lumina Player — visual specification 1.2.0
 
-The accompanying `design/lumina-player-visual-reference.png` is the approved concept direction, not a screenshot of the executable.
+## Design intent
 
-## Brand
-- Product name: Lumina Player.
-- Signature: luminous audio-wave mark and wordmark.
-- Fixed signature accent: violet/purple in both themes.
-- Mood: atmospheric, premium, calm, music-first.
+Reproduce the supplied 1280x720 reference as a native Windows desktop application, preserving the Lumina violet identity while keeping the interface light and offline-first.
 
-## Layout implemented in this revision
-- Left rail: My Music, folders, playlists, equalizer and appearance access.
-- Center: search/header, welcome banner, library cards and paging.
-- Right rail: current track, playback controls and 10-band equalizer.
-- Bottom transport: track status, play/pause, previous/next, shuffle, repeat and volume.
-- Local folder picker, filename search, playlists, presets, theme switch and custom background selection.
+## Layout
 
-## Appearance rules
-- Dark and light themes.
-- User can select or clear a local background image; only the background is customized.
-- Purple accent stays fixed; no user accent color selector.
-- Panels are translucent but avoid blur and expensive effects.
+- Top bar: Lumina wordmark, wide search field, add-folder action and compact menu.
+- Left rail: library navigation (My Music, Explore, Playlists, Artists, Albums, Genres, Folders), linked roots, equalizer and appearance controls.
+- Center: purple welcome banner, category tabs, local folder tiles and a paged 3-column music-card grid.
+- Right rail: current cover and metadata, seek, transport, low-cost static waveform, 10-band equalizer and local lyrics panel.
+- Bottom dock: current track, transport, timeline, mute and volume.
 
-## Performance rules
-- Native WPF controls only; no embedded browser or background services.
-- No continuous decorative animations.
-- UI timer is 500 ms.
-- Folder scanning runs on a worker task.
-- Library cards are paged in batches of 60 to cap live UI elements.
-- Background image is decoded once at a bounded width.
+## Visual language
 
-## Honest feature boundaries
-- Track cards currently use a generated visual placeholder; embedded album-art extraction is not yet implemented.
-- Artist/album/genre metadata pages, lyrics, and animated spectrum are not implemented.
-- Audio format support depends on NAudio and Windows Media Foundation codecs available on the target Windows installation.
-- Build and runtime behavior must be verified on Windows before release.
+- Core brand accent: Lumina violet (#B65CFF). Accent variants are optional but brand identity remains violet by default.
+- Dark surfaces: near-black plum (#100D1B), translucent plum panels and subtle violet borders.
+- Light mode changes the neutral surfaces and text, not the basic identity.
+- Background image is optional and affects the window background only; cards and panels retain legible surfaces.
+- Rounded corners, restrained borders, clear hierarchy, compact typography.
+
+## Performance constraints
+
+- Native WPF; no embedded browser or cloud service.
+- No continuous decorative animation. Waveform bars are static by design.
+- Playback UI timer: 500 ms.
+- Library enumeration and metadata extraction run off the UI thread.
+- Track cards are paged to 60 items.
+- Cover art is extracted to a local cache and decoded at reduced width only when needed for the now-playing pane.

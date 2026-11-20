@@ -11,6 +11,7 @@ public sealed class AudioService : IDisposable
     private EqualizerSampleProvider? equalizer;
     public string? CurrentPath { get; private set; }
     public bool IsPlaying => output?.PlaybackState == PlaybackState.Playing;
+    public float Level => equalizer?.Level ?? 0f;
     public event Action? PlaybackEnded;
 
     public void Play(string path)
@@ -29,17 +30,30 @@ public sealed class AudioService : IDisposable
                 : reader.ToSampleProvider();
 
             equalizer = new EqualizerSampleProvider(source);
-            output = new WasapiOut(AudioClientShareMode.Shared, 80);
+
+            // WASAPI shared é a saída preferencial. Se o dispositivo/driver não
+            // aceitar a inicialização, usa WaveOut como fallback compatível.
+            try
+            {
+                output = new WasapiOut(AudioClientShareMode.Shared, 100);
+                output.Init(equalizer);
+            }
+            catch
+            {
+                output?.Dispose();
+                output = new WaveOutEvent { DesiredLatency = 120, NumberOfBuffers = 3 };
+                output.Init(equalizer);
+            }
+
             output.PlaybackStopped += OnPlaybackStopped;
-            output.Init(equalizer);
             output.Volume = 0.75f;
             output.Play();
         }
-        catch
+        catch (Exception ex)
         {
             Stop();
             throw new InvalidOperationException(
-                "Não foi possível decodificar este arquivo. O formato pode não ser compatível com os codecs instalados no Windows.");
+                $"Não foi possível reproduzir este arquivo. Verifique o formato e os codecs de áudio do Windows. Detalhes: {ex.Message}", ex);
         }
     }
 
@@ -60,7 +74,7 @@ public sealed class AudioService : IDisposable
         if (output is not null)
         {
             output.PlaybackStopped -= OnPlaybackStopped;
-            output.Stop();
+            try { output.Stop(); } catch { }
             output.Dispose();
             output = null;
         }
